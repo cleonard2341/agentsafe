@@ -104,6 +104,17 @@ agentsafe dashboard
 - Export detections to JSON/CSV for research
 - Policy files — define allowed tools, scopes, and behaviors per agent in YAML
 
+### v2.0 — AgentSafe Cloud *(hosted, optional)*
+The core SDK will always be free and open-source. A hosted cloud tier is planned for teams and companies that need:
+- **Managed dashboard** — no self-hosting, persistent history across runs and machines
+- **Team access** — share sessions, detections, and alerts across your organization
+- **Slack / webhook alerts** — get notified the moment a critical detection fires in production
+- **Compliance exports** — export full agent audit logs as PDF or CSV for regulated industries (finance, healthcare, legal)
+- **Policy enforcement** — define what your agent is and isn't allowed to do in a YAML file; AgentSafe blocks violations before they execute
+- **On-premise option** — for enterprises that can't send data to the cloud
+
+> Interested in early access? Open an issue tagged `cloud-interest` or reach out directly.
+
 ## Writing a Custom Detector
 
 Detectors are easy to add. Subclass `BaseDetector`, implement `detect()`, and pass it to `wrap()`:
