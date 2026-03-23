@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentSafe Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+    header { background: #1a1d2e; border-bottom: 1px solid #2d3148; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+    header h1 { font-size: 1.1rem; font-weight: 600; }
+    .badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; background: #2d3148; color: #94a3b8; }
+    .layout { display: grid; grid-template-columns: 220px 1fr; height: calc(100vh - 57px); }
+    nav { background: #13151f; border-right: 1px solid #2d3148; padding: 16px 0; }
+    nav a { display: block; padding: 8px 20px; color: #94a3b8; text-decoration: none; font-size: 0.875rem; cursor: pointer; }
+    nav a:hover, nav a.active { background: #1e2235; color: #e2e8f0; }
+    main { overflow-y: auto; padding: 24px; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 8px; padding: 16px; }
+    .stat-card .value { font-size: 2rem; font-weight: 700; }
+    .stat-card .label { font-size: 0.75rem; color: #64748b; margin-top: 4px; }
+    .critical .value { color: #f87171; }
+    .warning .value  { color: #fbbf24; }
+    .info .value     { color: #60a5fa; }
+
+    .filters { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+    .filters input, .filters select { background: #1a1d2e; border: 1px solid #2d3148; color: #e2e8f0; padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; }
+    .filters label { font-size: 0.8rem; color: #94a3b8; display: flex; align-items: center; gap: 6px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th { text-align: left; padding: 8px 12px; color: #64748b; font-weight: 500; border-bottom: 1px solid #2d3148; }
+    td { padding: 10px 12px; border-bottom: 1px solid #1e2235; vertical-align: top; }
+    tr:hover td { background: #1a1d2e; cursor: pointer; }
+
+    .sev { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 0.75rem; font-weight: 600; }
+    .sev-critical { background: #3b1010; color: #f87171; }
+    .sev-warning  { background: #3b2c10; color: #fbbf24; }
+    .sev-info     { background: #10243b; color: #60a5fa; }
+
+    .flagged-dot { width: 8px; height: 8px; border-radius: 50%; background: #f87171; display: inline-block; }
+
+    .detail-panel { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 8px; padding: 20px; margin-top: 16px; }
+    .detail-panel h3 { font-size: 0.9rem; margin-bottom: 12px; color: #94a3b8; }
+    pre { background: #0f1117; border: 1px solid #2d3148; border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 0.78rem; white-space: pre-wrap; word-break: break-all; }
+    .close-btn { float: right; background: none; border: none; color: #64748b; font-size: 1.2rem; cursor: pointer; }
+    .close-btn:hover { color: #e2e8f0; }
+
+    .empty { color: #475569; text-align: center; padding: 48px; }
+    .refresh-btn { background: #2d3148; border: none; color: #e2e8f0; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
+    .refresh-btn:hover { background: #3d4168; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>AgentSafe</h1>
+  <span class="badge">Runtime Safety Monitor</span>
+  <span style="flex:1"></span>
+  <button class="refresh-btn" onclick="loadAll()">Refresh</button>
+</header>
+<div class="layout">
+  <nav>
+    <a class="active" onclick="showView('events')">Events</a>
+    <a onclick="showView('detections')">Detections</a>
+  </nav>
+  <main id="main-content">
+    <div class="stats-grid" id="stats"></div>
+    <div id="view-events">
+      <div class="filters">
+        <label><input type="checkbox" id="flagged-only" onchange="loadEvents()"> Flagged only</label>
+        <input id="session-filter" placeholder="Session ID..." oninput="loadEvents()" style="width:280px" />
+      </div>
+      <table>
+        <thead><tr><th></th><th>Time</th><th>Model</th><th>Session</th><th>Tools</th><th>ID</th></tr></thead>
+        <tbody id="events-body"></tbody>
+      </table>
+    </div>
+    <div id="view-detections" style="display:none">
+      <div class="filters">
+        <select id="sev-filter" onchange="loadDetections()">
+          <option value="">All severities</option>
+          <option value="critical">Critical</option>
+          <option value="warning">Warning</option>
+          <option value="info">Info</option>
+        </select>
+      </div>
+      <table>
+        <thead><tr><th>Severity</th><th>Detector</th><th>Label</th><th>Time</th><th>Event ID</th></tr></thead>
+        <tbody id="detections-body"></tbody>
+      </table>
+    </div>
+    <div id="detail-panel" style="display:none"></div>
+  </main>
+</div>
+
+<script>
+  const api = (path) => fetch('/api' + path).then(r => r.json());
+
+  async function loadStats() {
+    const s = await api('/stats');
+    document.getElementById('stats').innerHTML = `
+      <div class="stat-card"><div class="value">${s.total_events}</div><div class="label">Total Events</div></div>
+      <div class="stat-card"><div class="value" style="color:#f87171">${s.flagged_events}</div><div class="label">Flagged Events</div></div>
+      <div class="stat-card critical"><div class="value">${s.by_severity?.critical ?? 0}</div><div class="label">Critical</div></div>
+      <div class="stat-card warning"><div class="value">${s.by_severity?.warning ?? 0}</div><div class="label">Warning</div></div>
+      <div class="stat-card info"><div class="value">${s.by_severity?.info ?? 0}</div><div class="label">Info</div></div>
+    `;
+  }
+
+  async function loadEvents() {
+    const flagged = document.getElementById('flagged-only').checked;
+    const session = document.getElementById('session-filter').value.trim();
+    let url = `/events?flagged_only=${flagged}&limit=100`;
+    if (session) url += `&session_id=${encodeURIComponent(session)}`;
+    const events = await api(url);
+    const tbody = document.getElementById('events-body');
+    if (!events.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">No events</td></tr>'; return; }
+    tbody.innerHTML = events.map(e => `
+      <tr onclick="showEventDetail('${e.id}')">
+        <td>${e.flagged ? '<span class="flagged-dot"></span>' : ''}</td>
+        <td>${new Date(e.timestamp).toLocaleTimeString()}</td>
+        <td>${e.model}</td>
+        <td style="font-family:monospace;font-size:0.75rem">${e.session_id.slice(0,8)}…</td>
+        <td>${e.tool_calls.length}</td>
+        <td style="font-family:monospace;font-size:0.75rem">${e.id.slice(0,8)}…</td>
+      </tr>`).join('');
+  }
+
+  async function loadDetections() {
+    const sev = document.getElementById('sev-filter').value;
+    let url = `/detections?limit=100`;
+    if (sev) url += `&severity=${sev}`;
+    const dets = await api(url);
+    const tbody = document.getElementById('detections-body');
+    if (!dets.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">No detections</td></tr>'; return; }
+    tbody.innerHTML = dets.map(d => `
+      <tr onclick="showEventDetail('${d.event_id}')">
+        <td><span class="sev sev-${d.severity}">${d.severity}</span></td>
+        <td>${d.detector_name}</td>
+        <td>${d.label}</td>
+        <td>${new Date(d.timestamp).toLocaleTimeString()}</td>
+        <td style="font-family:monospace;font-size:0.75rem">${d.event_id.slice(0,8)}…</td>
+      </tr>`).join('');
+  }
+
+  async function showEventDetail(eventId) {
+    const data = await api(`/events/${eventId}`);
+    const panel = document.getElementById('detail-panel');
+    panel.style.display = 'block';
+    panel.innerHTML = `
+      <div class="detail-panel">
+        <button class="close-btn" onclick="document.getElementById('detail-panel').style.display='none'">✕</button>
+        <h3>Event ${eventId}</h3>
+        <p style="font-size:0.8rem;color:#64748b;margin-bottom:12px">Model: ${data.event.model} &nbsp;|&nbsp; Session: ${data.event.session_id}</p>
+        ${data.detections.length ? `
+          <h3 style="margin-bottom:8px">Detections (${data.detections.length})</h3>
+          ${data.detections.map(d => `
+            <div style="margin-bottom:8px;padding:10px;background:#0f1117;border-radius:6px;border-left:3px solid ${d.severity==='critical'?'#f87171':d.severity==='warning'?'#fbbf24':'#60a5fa'}">
+              <span class="sev sev-${d.severity}">${d.severity}</span>
+              <strong style="margin-left:8px">${d.label}</strong>
+              <pre style="margin-top:6px">${JSON.stringify(d.detail, null, 2)}</pre>
+            </div>`).join('')}
+        ` : '<p style="color:#475569;font-size:0.85rem">No detections for this event.</p>'}
+        <h3 style="margin:16px 0 8px">Messages</h3>
+        <pre>${JSON.stringify(data.event.messages, null, 2)}</pre>
+        ${data.event.tool_calls.length ? `<h3 style="margin:16px 0 8px">Tool Calls</h3><pre>${JSON.stringify(data.event.tool_calls, null, 2)}</pre>` : ''}
+      </div>`;
+    panel.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function showView(view) {
+    document.getElementById('view-events').style.display = view === 'events' ? '' : 'none';
+    document.getElementById('view-detections').style.display = view === 'detections' ? '' : 'none';
+    document.querySelectorAll('nav a').forEach((a, i) => a.classList.toggle('active', (i===0) === (view==='events')));
+    if (view === 'detections') loadDetections();
+  }
+
+  async function loadAll() {
+    await Promise.all([loadStats(), loadEvents()]);
+  }
+
+  loadAll();
+  setInterval(loadAll, 10000);
+</script>
+</body>
+</html>
