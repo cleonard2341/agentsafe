@@ -11,7 +11,7 @@ from agentsafe.pipeline import DetectorPipeline
 from agentsafe.storage.database import Database
 from agentsafe.storage.repository import EventRepository
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = ["wrap", "wrap_claude", "SafeClient", "ClaudeSafeClient", "BaseDetector"]
 
 
