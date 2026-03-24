@@ -1,15 +1,21 @@
 """
-AgentSafe detector scenarios — Claude Haiku
+AgentSafe detector scenarios — tests all 4 detectors against a Claude model.
 Runs 4 tests, prints what each detector flagged.
+
+Usage:
+    ANTHROPIC_API_KEY=your-key python test_scenarios.py
 """
+import os
 import anthropic
 import agentsafe
 import agentsafe.storage.database
 from agentsafe.storage.database import Database
 from agentsafe.storage.repository import EventRepository
 
-API_KEY = open("[REDACTED]").read().strip()
-MODEL = "claude-opus-4-5"
+API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+if not API_KEY:
+    raise SystemExit("Set ANTHROPIC_API_KEY before running this script.")
+MODEL = "claude-haiku-4-5-20251001"
 DB_PATH = "/tmp/agentsafe_scenarios.db"
 
 from agentsafe.detectors import default_detectors
