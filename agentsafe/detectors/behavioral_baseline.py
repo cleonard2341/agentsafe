@@ -27,32 +27,35 @@ def _centroid(embeddings: list[list[float]]) -> list[float]:
 
 def _event_fingerprint(event: Event) -> str:
     """
-    Create a text summary of the event that captures behavioral patterns:
-    tool call sequence, response tone, message roles.
+    Create a text summary of the event that captures behavioral patterns.
+
+    User intent is weighted 3x — it's the most stable signal for what the
+    agent is being asked to do. Response text is included at reduced weight
+    to capture behavioral tone without drowning out intent.
     """
     parts = []
 
-    # Tool call sequence
-    if event.tool_calls:
-        tools = " -> ".join(tc.function_name for tc in event.tool_calls)
-        parts.append(f"tools: {tools}")
-        # Include argument keys (not values) to capture intent without noise
-        for tc in event.tool_calls:
-            arg_keys = ", ".join(sorted(tc.arguments.keys()))
-            parts.append(f"{tc.function_name}({arg_keys})")
-
-    # Response content (first 300 chars)
-    if event.response_content:
-        parts.append(f"response: {event.response_content[:300]}")
-
-    # Last user message (captures task type)
+    # Last user message — repeated 3x to weight intent over response variance
+    user_text = ""
     for msg in reversed(event.messages):
         if msg.get("role") == "user":
             content = msg.get("content", "")
             if isinstance(content, list):
                 content = " ".join(p.get("text", "") for p in content if isinstance(p, dict))
-            parts.append(f"user: {str(content)[:200]}")
+            user_text = str(content)[:200]
             break
+
+    if user_text:
+        parts.extend([f"user: {user_text}"] * 3)
+
+    # Tool call sequence (intent signal)
+    if event.tool_calls:
+        tools = " -> ".join(tc.function_name for tc in event.tool_calls)
+        parts.append(f"tools: {tools}")
+
+    # Response content trimmed — tone signal, not content signal
+    if event.response_content:
+        parts.append(f"response: {event.response_content[:100]}")
 
     return " | ".join(parts) if parts else "empty event"
 
@@ -73,14 +76,16 @@ class BehavioralBaselineDetector(BaseDetector):
     def __init__(
         self,
         repo: EventRepository,
-        min_samples: int = 20,
-        anomaly_threshold: float = 0.5,
+        min_samples: int = 10,
+        anomaly_threshold: float = 0.75,
         model_name: str = "all-MiniLM-L6-v2",
+        verbose: bool = False,
     ) -> None:
         self._repo = repo
         self.min_samples = min_samples
         self.anomaly_threshold = anomaly_threshold
         self.model_name = model_name
+        self.verbose = verbose
         self._encoder = None   # lazy-loaded
         self._centroid: list[float] | None = None
         self._baseline_count: int = 0
@@ -139,6 +144,13 @@ class BehavioralBaselineDetector(BaseDetector):
         # Compare against baseline centroid
         assert self._centroid is not None
         similarity = _cosine_similarity(embedding, self._centroid)
+
+        if self.verbose:
+            print(
+                f"  [baseline] similarity={similarity:.4f}  "
+                f"threshold={self.anomaly_threshold}  "
+                f"baseline_size={stored_count}"
+            )
 
         if similarity < self.anomaly_threshold:
             return [
